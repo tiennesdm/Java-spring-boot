@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Spring Boot Pilot — Tasks</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a2332;
+      --line: #2c3a4f;
+      --text: #e8eef7;
+      --muted: #93a4bb;
+      --accent: #3d9cf0;
+      --ok: #3ecf8e;
+      --warn: #e6b450;
+      --todo: #8aa4c8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: radial-gradient(1200px 500px at 10% -10%, #1d3a5c 0%, var(--bg) 55%);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    main { max-width: 860px; margin: 0 auto; padding: 32px 20px 64px; }
+    h1 { font-size: 1.6rem; margin: 0 0 8px; }
+    p.lead { color: var(--muted); margin: 0 0 28px; }
+    form {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px;
+      display: grid;
+      gap: 10px;
+      margin-bottom: 24px;
+    }
+    input, textarea, select, button {
+      font: inherit;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: #121a26;
+      color: var(--text);
+      padding: 10px 12px;
+    }
+    textarea { min-height: 72px; resize: vertical; }
+    button {
+      background: var(--accent);
+      border: none;
+      color: #041018;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
+    button.danger { background: #c44c4c; color: white; }
+    ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+    li {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px 16px;
+    }
+    .row { display: flex; justify-content: space-between; gap: 12px; align-items: start; }
+    .title { font-weight: 650; }
+    .desc { color: var(--muted); margin: 6px 0 10px; font-size: 0.95rem; }
+    .badge {
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      padding: 4px 8px;
+      border-radius: 999px;
+    }
+    .TODO { background: #243044; color: var(--todo); }
+    .IN_PROGRESS { background: #3a2f14; color: var(--warn); }
+    .DONE { background: #143526; color: var(--ok); }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .hint { font-size: 0.85rem; color: var(--muted); margin-top: 20px; }
+    code { background: #121a26; padding: 2px 6px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Task Tracker — Spring Boot Pilot</h1>
+    <p class="lead">Yeh UI Spring Boot REST API (<code>/api/tasks</code>) ko call karta hai. Naya task add karke CRUD seekho.</p>
+    <form id="create-form">
+      <input name="title" placeholder="Task title" required maxlength="120" />
+      <textarea name="description" placeholder="Description (optional)" maxlength="1000"></textarea>
+      <select name="status">
+        <option value="TODO">TODO</option>
+        <option value="IN_PROGRESS">IN_PROGRESS</option>
+        <option value="DONE">DONE</option>
+      </select>
+      <button type="submit">Create task</button>
+    </form>
+    <ul id="tasks"></ul>
+    <p class="hint">API docs ke liye README dekho. H2 console: <code>/h2-console</code></p>
+  </main>
+  <script>
+    const listEl = document.getElementById("tasks");
+
+    async function load() {
+      const res = await fetch("/api/tasks");
+      const tasks = await res.json();
+      listEl.innerHTML = tasks.map(t => `
+        <li>
+          <div class="row">
+            <div>
+              <div class="title">${escapeHtml(t.title)}</div>
+              <div class="desc">${escapeHtml(t.description || "")}</div>
+              <span class="badge ${t.status}">${t.status}</span>
+            </div>
+          </div>
+          <div class="actions" style="margin-top:10px">
+            <button class="ghost" onclick="cycle(${t.id}, '${t.status}')">Next status</button>
+            <button class="danger" onclick="removeTask(${t.id})">Delete</button>
+          </div>
+        </li>
+      `).join("") || "<p class='lead'>No tasks yet.</p>";
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+    }
+
+    const order = ["TODO", "IN_PROGRESS", "DONE"];
+
+    async function cycle(id, status) {
+      const next = order[(order.indexOf(status) + 1) % order.length];
+      await fetch(`/api/tasks/${id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: next })
+      });
+      load();
+    }
+
+    async function removeTask(id) {
+      await fetch(`/api/tasks/${id}`, { method: "DELETE" });
+      load();
+    }
+
+    document.getElementById("create-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      const body = {
+        title: form.title.value,
+        description: form.description.value,
+        status: form.status.value
+      };
+      const res = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        alert((err.details && err.details.join("\n")) || err.message);
+        return;
+      }
+      form.reset();
+      load();
+    });
+
+    load();
+  </script>
+</body>
+</html>
